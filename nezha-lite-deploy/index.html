@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Nezha Lite</title>
+<style>
+:root{
+  --bg:#f5f6f8;--card:#fff;--text:#1d2129;--sub:#7a8294;--line:#e6e8ee;
+  --ok:#22b573;--warn:#f5a623;--bad:#e5484d;--accent:#4f7cff;--track:#eceff4;
+}
+@media (prefers-color-scheme:dark){
+  :root{--bg:#0f1115;--card:#171a21;--text:#e6e8ee;--sub:#8a93a6;--line:#262b36;--track:#262b36}
+}
+:root[data-theme=light]{--bg:#f5f6f8;--card:#fff;--text:#1d2129;--sub:#7a8294;--line:#e6e8ee;--track:#eceff4}
+:root[data-theme=dark]{--bg:#0f1115;--card:#171a21;--text:#e6e8ee;--sub:#8a93a6;--line:#262b36;--track:#262b36}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
+.wrap{max-width:1200px;margin:0 auto;padding:20px 16px 40px}
+header{display:flex;flex-wrap:wrap;align-items:center;gap:12px;justify-content:space-between;margin-bottom:16px}
+h1{font-size:20px;margin:0;display:flex;align-items:center;gap:8px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--bad);display:inline-block}
+.dot.on{background:var(--ok)}
+.conn{font-size:12px;color:var(--sub);font-weight:400}
+.tools{display:flex;gap:8px;flex-wrap:wrap}
+input,select,button{font:inherit;color:var(--text);background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 10px;outline:none}
+input:focus,select:focus{border-color:var(--accent)}
+button{cursor:pointer}
+.summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.stat .k{color:var(--sub);font-size:12px}
+.stat .v{font-size:20px;font-weight:600;margin-top:2px;font-variant-numeric:tabular-nums}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;transition:opacity .2s}
+.card.off{opacity:.55}
+.top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.name{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.meta{color:var(--sub);font-size:12px;margin:2px 0 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.badge{font-size:11px;padding:1px 8px;border-radius:99px;background:color-mix(in srgb,var(--ok) 15%,transparent);color:var(--ok);flex:none}
+.badge.off{background:color-mix(in srgb,var(--bad) 15%,transparent);color:var(--bad)}
+.row{display:grid;grid-template-columns:44px 1fr 48px;gap:8px;align-items:center;margin:6px 0;font-size:12px}
+.row .l{color:var(--sub)}
+.row .p{text-align:right;font-variant-numeric:tabular-nums}
+.bar{height:6px;border-radius:99px;background:var(--track);overflow:hidden}
+.bar i{display:block;height:100%;border-radius:99px;background:var(--ok);transition:width .4s}
+.bar i.w{background:var(--warn)}.bar i.b{background:var(--bad)}
+.net{display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;margin-top:10px;padding-top:10px;border-top:1px dashed var(--line);font-size:12px;font-variant-numeric:tabular-nums}
+.net span{color:var(--sub)}
+.card{cursor:pointer}
+.tags{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 8px}
+.tag{font-size:11px;padding:0 7px;border-radius:6px;background:var(--track);color:var(--sub)}
+.more{display:none;margin-top:10px;padding-top:10px;border-top:1px dashed var(--line);font-size:12px}
+.card.open .more{display:grid;grid-template-columns:64px 1fr;gap:4px 10px}
+.more b{font-weight:400;color:var(--sub)}
+.more span{word-break:break-all}
+.empty{grid-column:1/-1;text-align:center;color:var(--sub);padding:40px 0}
+.demo{font-size:12px;color:var(--warn)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1><span class="dot" id="dot"></span><span id="title">Nezha Lite</span>
+      <span class="conn" id="conn"></span></h1>
+    <div class="tools">
+      <input id="q" placeholder="搜索名称 / 系统…" autocomplete="off">
+      <select id="filter">
+        <option value="all">全部</option>
+        <option value="on">在线</option>
+        <option value="off">离线</option>
+      </select>
+      <select id="sort">
+        <option value="id">默认排序</option>
+        <option value="name">名称</option>
+        <option value="cpu">CPU</option>
+        <option value="mem">内存</option>
+        <option value="net">网速</option>
+      </select>
+      <button id="theme" title="切换主题">◐</button>
+    </div>
+  </header>
+
+  <section class="summary" id="summary"></section>
+  <section class="grid" id="grid"></section>
+</div>
+
+<script>
+/* ========== 配置 ========== */
+const CONFIG = {
+  title: "Nezha Lite",
+  // 哪吒 v1 的服务器状态 WebSocket，例如：wss://nezha.example.com/api/v1/ws/server
+  // 留空 = 演示模式。也可以用 URL 参数覆盖：?ws=wss://...
+  wsUrl: "",
+  offlineAfterMs: 30000,   // 超过该时间未上报视为离线
+  reconnectMs: 3000
+};
+
+/* ========== 工具函数 ========== */
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const clamp = (n, a, b) => Math.min(b, Math.max(a, n));
+function bytes(n, perSec){
+  n = +n || 0;
+  const u = ["B","KB","MB","GB","TB","PB"]; let i = 0;
+  while(n >= 1024 && i < u.length-1){ n /= 1024; i++; }
+  return n.toFixed(n >= 100 || i === 0 ? 0 : 1) + " " + u[i] + (perSec ? "/s" : "");
+}
+function uptime(s){
+  s = +s || 0;
+  const d = Math.floor(s/86400), h = Math.floor(s%86400/3600), m = Math.floor(s%3600/60);
+  return d ? `${d}天${h}时` : h ? `${h}时${m}分` : `${m}分`;
+}
+function flag(cc){
+  if(!cc || cc.length !== 2) return "🌐";
+  return String.fromCodePoint(...cc.toUpperCase().split("").map(c => 127397 + c.charCodeAt(0)));
+}
+const level = p => p >= 90 ? "b" : p >= 70 ? "w" : "";
+
+/* ========== 数据归一化 ========== */
+let servers = [];
+function normalize(msg){
+  const now = msg.now || Date.now();
+  return (msg.servers || []).map(s => {
+    const st = s.state || {}, h = s.host || {};
+    const last = Date.parse(s.last_active);
+    const online = !isNaN(last) && last > 0 && now - last < CONFIG.offlineAfterMs;
+    const pct = (a, b) => b > 0 ? clamp(a / b * 100, 0, 100) : 0;
+    return {
+      id: s.id, name: s.name || ("#" + s.id),
+      cc: s.country_code || h.country_code || "",
+      os: [h.platform, h.arch].filter(Boolean).join(" · "),
+      osVer: [h.platform, h.platform_version].filter(Boolean).join(" "),
+      online,
+      cpu: clamp(+st.cpu || 0, 0, 100),
+      mem: pct(st.mem_used, h.mem_total),
+      disk: pct(st.disk_used, h.disk_total),
+      swap: pct(st.swap_used, h.swap_total),
+      memU: st.mem_used, memT: h.mem_total,
+      diskU: st.disk_used, diskT: h.disk_total,
+      swapU: st.swap_used, swapT: h.swap_total,
+      cpuModel: Array.isArray(h.cpu) ? h.cpu.join(" / ") : (h.cpu || ""),
+      virt: h.virtualization || "",
+      agent: h.version || "",
+      boot: h.boot_time ? h.boot_time * 1000 : 0,
+      lastActive: isNaN(last) || last <= 0 ? 0 : last,
+      note: s.public_note || "",
+      load: st.load_1, load5: st.load_5, load15: st.load_15,
+      tcp: st.tcp_conn_count, udp: st.udp_conn_count, proc: st.process_count,
+      up: st.uptime,
+      rx: +st.net_in_speed || 0, tx: +st.net_out_speed || 0,
+      rxT: +st.net_in_transfer || 0, txT: +st.net_out_transfer || 0
+    };
+  });
+}
+
+/* ========== 渲染 ========== */
+function bar(label, p){
+  return `<div class="row"><span class="l">${label}</span>
+    <div class="bar"><i class="${level(p)}" style="width:${p.toFixed(1)}%"></i></div>
+    <span class="p">${p.toFixed(0)}%</span></div>`;
+}
+const opened = new Set();
+const fmtTime = t => t ? new Date(t).toLocaleString("zh-CN", {hour12:false}) : "-";
+const has = v => v !== undefined && v !== null && v !== "";
+function detail(s){
+  const rows = [
+    ["CPU", s.cpuModel], ["系统", s.osVer], ["虚拟化", s.virt],
+    ["内存", s.memT ? `${bytes(s.memU)} / ${bytes(s.memT)}` : ""],
+    ["磁盘", s.diskT ? `${bytes(s.diskU)} / ${bytes(s.diskT)}` : ""],
+    ["交换", s.swapT ? `${bytes(s.swapU)} / ${bytes(s.swapT)}` : ""],
+    ["负载", has(s.load) ? [s.load, s.load5, s.load15].filter(has).map(n => (+n).toFixed(2)).join(" / ") : ""],
+    ["启动于", s.boot ? fmtTime(s.boot) : ""],
+    ["最后上报", s.lastActive ? fmtTime(s.lastActive) : ""],
+    ["Agent", s.agent], ["备注", s.note]
+  ].filter(r => has(r[1]));
+  return rows.map(([k, v]) => `<b>${k}</b><span>${esc(v)}</span>`).join("");
+}
+function render(){
+  const q = $("q").value.trim().toLowerCase();
+  const f = $("filter").value, sort = $("sort").value;
+
+  const on = servers.filter(s => s.online);
+  const sum = (k) => on.reduce((a, s) => a + s[k], 0);
+  $("summary").innerHTML = [
+    ["在线 / 总数", `${on.length} / ${servers.length}`],
+    ["实时下行", bytes(sum("rx"), 1)],
+    ["实时上行", bytes(sum("tx"), 1)],
+    ["累计流量", bytes(sum("rxT") + sum("txT"))],
+    ["平均 CPU", on.length ? (sum("cpu") / on.length).toFixed(0) + "%" : "-"]
+  ].map(([k, v]) => `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("");
+
+  let list = servers.filter(s =>
+    (f === "all" || (f === "on") === s.online) &&
+    (!q || (s.name + " " + s.os).toLowerCase().includes(q)));
+  const key = {
+    name: (a, b) => a.name.localeCompare(b.name),
+    cpu: (a, b) => b.cpu - a.cpu,
+    mem: (a, b) => b.mem - a.mem,
+    net: (a, b) => (b.rx + b.tx) - (a.rx + a.tx),
+    id: (a, b) => a.id - b.id
+  }[sort];
+  list.sort(key);
+
+  $("grid").innerHTML = list.length ? list.map(s => `
+    <div class="card ${s.online ? "" : "off"} ${opened.has(s.id) ? "open" : ""}" data-id="${s.id}">
+      <div class="top">
+        <span class="name">${flag(s.cc)} ${esc(s.name)}</span>
+        <span class="badge ${s.online ? "" : "off"}">${s.online ? "在线" : "离线"}</span>
+      </div>
+      <div class="meta">${esc(s.os || "-")}${s.online && s.up ? " · 运行 " + uptime(s.up) : ""}</div>
+      ${(s.virt || s.note) ? `<div class="tags">${s.virt ? `<span class="tag">${esc(s.virt)}</span>` : ""}${s.note ? `<span class="tag">${esc(s.note.slice(0, 24))}</span>` : ""}</div>` : ""}
+      ${bar("CPU", s.cpu)}${bar("内存", s.mem)}${s.swapT ? bar("交换", s.swap) : ""}${bar("磁盘", s.disk)}
+      <div class="net">
+        <div><span>↓ </span>${bytes(s.rx, 1)}</div><div><span>↑ </span>${bytes(s.tx, 1)}</div>
+        <div><span>总↓ </span>${bytes(s.rxT)}</div><div><span>总↑ </span>${bytes(s.txT)}</div>
+        <div><span>负载 </span>${has(s.load) ? (+s.load).toFixed(2) : "-"}</div>
+        <div><span>进程 </span>${has(s.proc) ? s.proc : "-"}</div>
+        <div><span>TCP </span>${has(s.tcp) ? s.tcp : "-"}</div>
+        <div><span>UDP </span>${has(s.udp) ? s.udp : "-"}</div>
+      </div>
+      <div class="more">${detail(s)}</div>
+    </div>`).join("") : `<div class="empty">没有匹配的服务器</div>`;
+}
+
+/* ========== 数据源：WebSocket ========== */
+function setConn(ok, text){
+  $("dot").classList.toggle("on", ok);
+  $("conn").textContent = text;
+}
+function connect(url){
+  let ws;
+  const open = () => {
+    setConn(false, "连接中…");
+    ws = new WebSocket(url);
+    ws.onopen = () => setConn(true, "已连接");
+    ws.onmessage = e => {
+      try { servers = normalize(JSON.parse(e.data)); render(); } catch(_) {}
+    };
+    ws.onclose = () => { setConn(false, "已断开，重连中…"); setTimeout(open, CONFIG.reconnectMs); };
+    ws.onerror = () => ws.close();
+  };
+  open();
+}
+
+/* ========== 数据源：演示模式 ========== */
+function demo(){
+  setConn(true, "演示模式");
+  $("conn").classList.add("demo");
+  const names = [["东京 Vultr","JP","Ubuntu","amd64"],["香港 HKT","HK","Debian","amd64"],
+    ["洛杉矶 DMIT","US","Debian","amd64"],["法兰克福 Hetzner","DE","Ubuntu","arm64"],
+    ["新加坡 AWS","SG","Amazon Linux","arm64"],["上海 家宽","CN","Alpine","amd64"],
+    ["首尔 Oracle","KR","Ubuntu","arm64"],["备用机","US","CentOS","amd64"]];
+  const mk = (n, i) => ({
+    id: i + 1, name: n[0], country_code: n[1],
+    host: {platform: n[2], platform_version: "22.04", arch: n[3], mem_total: 4 * 2**30, disk_total: 80 * 2**30,
+           swap_total: i % 3 ? 2**30 : 0, cpu: ["Intel Xeon Gold 6140 x2"], virtualization: i % 2 ? "kvm" : "lxc",
+           version: "1.13.0", boot_time: Math.floor(Date.now()/1000) - 86400 * (3 + i * 11)},
+    note: i === 1 ? "BGP 线路" : "",
+    st: {cpu: Math.random()*60, mem: 2**30*(1+Math.random()*2), disk: 2**30*(20+Math.random()*40),
+         rx: Math.random()*2e5, tx: Math.random()*1e5, rxT: Math.random()*5e11, txT: Math.random()*3e11,
+         up: 86400*(1+Math.random()*200), load: Math.random()*2},
+    down: i === 7
+  });
+  const pool = names.map(mk);
+  const walk = (v, a, b, step) => clamp(v + (Math.random()-.5)*step, a, b);
+  const tick = () => {
+    const now = Date.now();
+    pool.forEach(p => {
+      const s = p.st;
+      s.cpu = walk(s.cpu, 1, 99, 20); s.mem = walk(s.mem, 2**29, 3.9*2**30, 2**27);
+      s.rx = walk(s.rx, 0, 5e6, 3e5); s.tx = walk(s.tx, 0, 2e6, 1.5e5);
+      s.rxT += s.rx * 2; s.txT += s.tx * 2; s.up += 2; s.load = walk(s.load, 0, 6, .4);
+    });
+    servers = normalize({now, servers: pool.map(p => ({
+      id: p.id, name: p.name, country_code: p.country_code, host: p.host, public_note: p.note,
+      last_active: new Date(p.down ? now - 3600e3 : now).toISOString(),
+      state: {cpu: p.st.cpu, mem_used: p.st.mem, disk_used: p.st.disk,
+        swap_used: p.st.mem / 8, load_5: p.st.load * .9, load_15: p.st.load * .8,
+        tcp_conn_count: Math.round(p.st.cpu * 3 + 40), udp_conn_count: Math.round(p.st.cpu / 4 + 5),
+        process_count: Math.round(90 + p.st.cpu),
+        net_in_speed: p.st.rx, net_out_speed: p.st.tx,
+        net_in_transfer: p.st.rxT, net_out_transfer: p.st.txT,
+        uptime: p.st.up, load_1: p.st.load}
+    }))});
+    render();
+  };
+  tick(); setInterval(tick, 2000);
+}
+
+/* ========== 初始化 ========== */
+(function init(){
+  const params = new URLSearchParams(location.search);
+  document.title = $("title").textContent = params.get("title") || CONFIG.title;
+
+  const saved = (() => { try { return localStorage.getItem("nz-theme"); } catch(_) { return null; } })();
+  if(saved) document.documentElement.dataset.theme = saved;
+  $("theme").onclick = () => {
+    const dark = document.documentElement.dataset.theme
+      ? document.documentElement.dataset.theme === "dark"
+      : matchMedia("(prefers-color-scheme:dark)").matches;
+    const next = dark ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem("nz-theme", next); } catch(_) {}
+  };
+
+  ["q","filter","sort"].forEach(id => $(id).addEventListener("input", render));
+  $("grid").addEventListener("click", e => {
+    const c = e.target.closest(".card"); if(!c) return;
+    const id = +c.dataset.id;
+    opened.has(id) ? opened.delete(id) : opened.add(id);
+    c.classList.toggle("open");
+  });
+  render();
+
+  const url = params.get("ws") || CONFIG.wsUrl;
+  url ? connect(url) : demo();
+})();
+</script>
+</body>
+</html>
